@@ -72,7 +72,7 @@ The dashboard provides:
 The project visualizes actual product demand against
 machine learning predictions.
 
-![Actual vs Predicted Sales](results/actual_vs_prediction.png)
+![Actual vs Predicted Sales](results/actual_vs_predicted.png)
 ## Run the Project
 
 Install required libraries:
