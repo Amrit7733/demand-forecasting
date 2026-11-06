@@ -1,196 +1,88 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
+from pathlib import Path
 
-# -----------------------------------
-# PAGE CONFIGURATION
-# -----------------------------------
-
-st.set_page_config(
-    page_title="Demand Forecasting Dashboard",
-    page_icon="📊",
-    layout="wide"
-)
-
-# -----------------------------------
-# DASHBOARD TITLE
-# -----------------------------------
-
-st.title("📊 Demand Forecasting & Inventory Optimization")
-
-st.markdown(
-    "### Walmart M5 Sales Forecasting Project"
-)
-
-st.write(
-    "Interactive dashboard for analyzing actual sales, "
-    "predicted demand, and forecasting performance."
-)
-
-# -----------------------------------
-# LOAD DATA
-# -----------------------------------
+st.set_page_config(page_title='Demand Intelligence | M5', page_icon='📈', layout='wide')
+st.markdown('''<style>
+.stApp {background: #090b12; color: #f1f3f8;}
+[data-testid="stSidebar"] {background: #111521;}
+[data-testid="stMetric"] {background:#151a27; border:1px solid #303746; padding:16px; border-radius:14px;}
+h1,h2,h3 {color:#f5f6fa!important;}
+.stButton button, .stDownloadButton button {background:#b91c35; color:white; border:0; border-radius:10px;}
+</style>''', unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv("oos_predictions.csv")
-
-    df["date"] = pd.to_datetime(df["date"])
-
-    return df
-
+    path = Path(__file__).resolve().parent / 'oos_predictions.csv'
+    if not path.exists():
+        st.error('Missing oos_predictions.csv. Keep it beside dashboard.py in the repository.')
+        st.stop()
+    data = pd.read_csv(path)
+    required = {'id', 'date', 'sales', 'p50'}
+    missing = required - set(data.columns)
+    if missing:
+        st.error(f'Missing columns in CSV: {", ".join(sorted(missing))}')
+        st.stop()
+    data['date'] = pd.to_datetime(data['date'], errors='coerce')
+    data['sales'] = pd.to_numeric(data['sales'], errors='coerce')
+    data['p50'] = pd.to_numeric(data['p50'], errors='coerce')
+    return data.dropna(subset=['id', 'date', 'sales', 'p50']).sort_values('date')
 
 df = load_data()
+if df.empty:
+    st.warning('No valid prediction rows found.')
+    st.stop()
 
-# -----------------------------------
-# SIDEBAR
-# -----------------------------------
+st.title('◈ DEMAND INTELLIGENCE')
+st.caption('Walmart M5 • Out-of-sample forecasting analytics • Portfolio demo')
+st.sidebar.header('Explore forecasts')
+products = sorted(df['id'].astype(str).unique())
+selected_product = st.sidebar.selectbox('Product', products)
+product_df = df.loc[df['id'].astype(str) == selected_product].copy()
+start, end = product_df['date'].min().date(), product_df['date'].max().date()
+selected_range = st.sidebar.date_input('Date range', value=(start, end), min_value=start, max_value=end)
+if isinstance(selected_range, (tuple, list)) and len(selected_range) == 2:
+    a, b = selected_range
+    product_df = product_df[product_df['date'].dt.date.between(a, b)]
+if product_df.empty:
+    st.info('No observations in this date range. Adjust the filter.')
+    st.stop()
 
-st.sidebar.header("Dashboard Controls")
+actual = product_df['sales'].to_numpy(dtype=float)
+pred = product_df['p50'].to_numpy(dtype=float)
+error = actual - pred
+mae = np.mean(np.abs(error))
+rmse = np.sqrt(np.mean(error ** 2))
+wape = np.sum(np.abs(error)) / np.sum(np.abs(actual)) * 100 if np.sum(np.abs(actual)) > 0 else np.nan
+bias = np.mean(pred - actual)
 
-product_list = sorted(df["id"].unique())
+st.subheader('Forecast performance')
+c1, c2, c3, c4 = st.columns(4)
+c1.metric('Actual units', f'{actual.sum():,.0f}')
+c2.metric('Predicted units', f'{pred.sum():,.0f}')
+c3.metric('MAE (units/day)', f'{mae:.2f}')
+c4.metric('WAPE', f'{wape:.1f}%' if np.isfinite(wape) else 'N/A')
 
-selected_product = st.sidebar.selectbox(
-    "Select Product",
-    product_list
-)
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=product_df['date'], y=actual, mode='lines+markers', name='Actual sales', line=dict(color='#f2f4f8', width=2)))
+fig.add_trace(go.Scatter(x=product_df['date'], y=pred, mode='lines+markers', name='Predicted (p50)', line=dict(color='#fb3657', width=2)))
+fig.update_layout(template='plotly_dark', paper_bgcolor='#111521', plot_bgcolor='#111521', title=f'Actual vs predicted · {selected_product}', xaxis_title='Date', yaxis_title='Units sold', hovermode='x unified', margin=dict(l=20,r=20,t=60,b=20))
+st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------------
-# FILTER DATA
-# -----------------------------------
+left, right = st.columns(2)
+with left:
+    st.subheader('Error diagnostics')
+    st.metric('RMSE (units/day)', f'{rmse:.2f}')
+    st.metric('Mean prediction bias (units/day)', f'{bias:+.2f}')
+    st.caption('Positive bias means overforecasting; negative bias means underforecasting.')
+with right:
+    residual_fig = go.Figure(go.Bar(x=product_df['date'], y=error, marker_color=['#fb3657' if v < 0 else '#64748b' for v in error]))
+    residual_fig.update_layout(template='plotly_dark', paper_bgcolor='#111521', plot_bgcolor='#111521', title='Residuals: actual − predicted', xaxis_title='Date', yaxis_title='Units', margin=dict(l=20,r=20,t=60,b=20))
+    st.plotly_chart(residual_fig, use_container_width=True)
 
-product_df = df[
-    df["id"] == selected_product
-].copy()
-
-product_df = product_df.sort_values("date")
-
-# -----------------------------------
-# KEY PERFORMANCE INDICATORS
-# -----------------------------------
-
-st.subheader("📈 Sales Overview")
-
-col1, col2, col3 = st.columns(3)
-
-total_sales = product_df["sales"].sum()
-
-average_sales = product_df["sales"].mean()
-
-average_prediction = product_df["p50"].mean()
-
-with col1:
-    st.metric(
-        "Total Actual Sales",
-        f"{total_sales:,.0f}"
-    )
-
-with col2:
-    st.metric(
-        "Average Daily Sales",
-        f"{average_sales:.2f}"
-    )
-
-with col3:
-    st.metric(
-        "Average Predicted Sales",
-        f"{average_prediction:.2f}"
-    )
-
-# -----------------------------------
-# ACTUAL VS PREDICTED GRAPH
-# -----------------------------------
-
-st.subheader("📉 Actual vs Predicted Sales")
-
-fig, ax = plt.subplots(figsize=(14, 5))
-
-ax.plot(
-    product_df["date"],
-    product_df["sales"],
-    label="Actual Sales",
-    color="blue"
-)
-
-ax.plot(
-    product_df["date"],
-    product_df["p50"],
-    label="Predicted Sales",
-    color="red"
-)
-
-ax.set_xlabel("Date")
-
-ax.set_ylabel("Units Sold")
-
-ax.set_title(
-    f"Sales Forecast - {selected_product}"
-)
-
-ax.legend()
-
-ax.grid(alpha=0.3)
-
-plt.tight_layout()
-
-st.pyplot(fig)
-
-plt.close(fig)
-
-# -----------------------------------
-# FORECAST ERROR
-# -----------------------------------
-
-st.subheader("🎯 Forecast Accuracy")
-
-mae = (
-    product_df["sales"] - product_df["p50"]
-).abs().mean()
-
-st.metric(
-    "Mean Absolute Error (MAE)",
-    f"{mae:.3f}"
-)
-
-st.info(
-    "MAE measures the average absolute difference "
-    "between actual sales and predicted sales. "
-    "Lower values indicate better predictions."
-)
-
-# -----------------------------------
-# DATA TABLE
-# -----------------------------------
-
-st.subheader("📋 Prediction Data")
-
-st.dataframe(
-    product_df[
-        ["date", "sales", "p50"]
-    ],
-    use_container_width=True
-)
-
-# -----------------------------------
-# DOWNLOAD BUTTON
-# -----------------------------------
-
-csv = product_df.to_csv(index=False)
-
-st.download_button(
-    label="Download Product Predictions",
-    data=csv,
-    file_name="product_predictions.csv",
-    mime="text/csv"
-)
-
-# -----------------------------------
-# FOOTER
-# -----------------------------------
-
-st.markdown("---")
-
-st.caption(
-    "Demand Forecasting & Inventory Optimization "
-    "| Walmart M5 Dataset | Data Science Portfolio"
-)
+st.subheader('Prediction records')
+st.dataframe(product_df[['date', 'sales', 'p50']], use_container_width=True, hide_index=True)
+st.download_button('Download filtered predictions', product_df.to_csv(index=False).encode('utf-8'), 'product_predictions.csv', 'text/csv')
+st.caption('Metrics are descriptive for the selected out-of-sample records. They do not establish causal impact or real-time inference.')
