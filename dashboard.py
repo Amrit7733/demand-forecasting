@@ -6,11 +6,20 @@ from pathlib import Path
 
 st.set_page_config(page_title='Demand Intelligence | M5', page_icon='📈', layout='wide')
 st.markdown('''<style>
-.stApp {background: #090b12; color: #f1f3f8;}
-[data-testid="stSidebar"] {background: #111521;}
-[data-testid="stMetric"] {background:#151a27; border:1px solid #303746; padding:16px; border-radius:14px;}
-h1,h2,h3 {color:#f5f6fa!important;}
-.stButton button, .stDownloadButton button {background:#b91c35; color:white; border:0; border-radius:10px;}
+.stApp {background:radial-gradient(ellipse at 85% 0%,#301324 0%,#0a0d16 45%,#070910 100%);color:#f5f6fb;}
+.block-container {padding-top:2rem;padding-bottom:3rem;max-width:1450px;}
+[data-testid="stHeader"] {background:rgba(8,10,17,.7);}
+[data-testid="stSidebar"] {background:linear-gradient(180deg,#231528,#101420 65%,#0b0e17);border-right:1px solid #633149;}
+[data-testid="stSidebar"] h2 {color:white!important;}
+[data-testid="stSidebar"] label {color:#d8dce8!important;font-weight:600;}
+[data-testid="stSidebar"] [data-baseweb="select"]>div,[data-testid="stSidebar"] [data-testid="stDateInput"] input {background:#251e2e!important;border:1px solid #80415b!important;border-radius:10px!important;color:white!important;}
+h1 {font-size:clamp(2rem,3.3vw,3.5rem)!important;font-weight:800!important;letter-spacing:-.04em;color:#fff!important;}
+h2,h3 {color:#f5f6fa!important;}
+[data-testid="stMetric"] {background:linear-gradient(145deg,#202130,#131622);border:1px solid #573047;border-top:2px solid #ff456d;padding:20px;border-radius:18px;box-shadow:0 10px 35px #0005,0 0 18px #fb365711;}
+[data-testid="stMetricLabel"] {color:#c1c8d8;}
+[data-testid="stMetricValue"] {color:#fff;font-weight:800;}
+[data-testid="stDownloadButton"] button {background:linear-gradient(90deg,#d9214e,#a91338)!important;color:white!important;border:1px solid #f25376!important;border-radius:12px!important;font-weight:700;}
+[data-testid="stDataFrame"] {border:1px solid #493044;border-radius:14px;overflow:hidden;}
 </style>''', unsafe_allow_html=True)
 
 @st.cache_data
@@ -35,8 +44,12 @@ if df.empty:
     st.warning('No valid prediction rows found.')
     st.stop()
 
+st.caption('●  FORECAST ANALYTICS / WALMART M5')
 st.title('◈ DEMAND INTELLIGENCE')
 st.caption('Walmart M5 • Out-of-sample forecasting analytics • Portfolio demo')
+st.sidebar.markdown('### ◈ CONTROL CENTER')
+st.sidebar.caption('DEMAND INTELLIGENCE · V3')
+st.sidebar.divider()
 st.sidebar.header('Explore forecasts')
 products = sorted(df['id'].astype(str).unique())
 selected_product = st.sidebar.selectbox('Product', products)
@@ -58,7 +71,7 @@ rmse = np.sqrt(np.mean(error ** 2))
 wape = np.sum(np.abs(error)) / np.sum(np.abs(actual)) * 100 if np.sum(np.abs(actual)) > 0 else np.nan
 bias = np.mean(pred - actual)
 
-st.subheader('Forecast performance')
+st.subheader('⚡ Forecast performance')
 c1, c2, c3, c4 = st.columns(4)
 c1.metric('Actual units', f'{actual.sum():,.0f}')
 c2.metric('Predicted units', f'{pred.sum():,.0f}')
@@ -73,7 +86,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 left, right = st.columns(2)
 with left:
-    st.subheader('Error diagnostics')
+    st.subheader('🎯 Error diagnostics')
     st.metric('RMSE (units/day)', f'{rmse:.2f}')
     st.metric('Mean prediction bias (units/day)', f'{bias:+.2f}')
     st.caption('Positive bias means overforecasting; negative bias means underforecasting.')
@@ -82,7 +95,7 @@ with right:
     residual_fig.update_layout(template='plotly_dark', paper_bgcolor='#111521', plot_bgcolor='#111521', title='Residuals: actual − predicted', xaxis_title='Date', yaxis_title='Units', margin=dict(l=20,r=20,t=60,b=20))
     st.plotly_chart(residual_fig, use_container_width=True)
 
-st.subheader('Prediction records')
+st.subheader('📋 Prediction records')
 st.dataframe(product_df[['date', 'sales', 'p50']], use_container_width=True, hide_index=True)
 st.download_button('Download filtered predictions', product_df.to_csv(index=False).encode('utf-8'), 'product_predictions.csv', 'text/csv')
 st.caption('Metrics are descriptive for the selected out-of-sample records. They do not establish causal impact or real-time inference.')
